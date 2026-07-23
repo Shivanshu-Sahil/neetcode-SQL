@@ -1,12 +1,12 @@
-name: Filter SQL Submissions Only (NeetCode + LeetCode)
+name: Filter and Version SQL Submissions
 
 on:
   push:
     branches:
-      - main  # Change to your default branch name if it is 'master'
+      - main
 
 jobs:
-  clean-repo:
+  clean-and-version:
     runs-on: ubuntu-latest
     if: "!contains(github.event.head_commit.message, 'Auto-cleanup')"
 
@@ -16,44 +16,57 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Remove Non-SQL Files from Latest Commit
+    - name: Process Submissions
       run: |
-        FILES=$(git diff-tree --no-commit-id --name-only -r ${{ github.sha }})
-        NON_SQL_FOUND=false
+        FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
+        CHANGES_MADE=false
 
         for file in $FILES; do
-          # Ignore repository-level system files
-          if [[ "$file" == .github* ]]; then
+          # 1. Protect repo-level system files and the main root README
+          if [[ "$file" == .github* || "$file" == "README.md" ]]; then
+            echo "Skipping main repository system file: $file"
             continue
           fi
 
-          # If it's a README, check if there is a SQL file in its directory
-          if [[ "$(basename "$file")" == "README.md" ]]; then
-            DIR_PATH=$(dirname "$file")
-            # If a .sql file exists in the same folder, skip deletion (save the README!)
-            if ls "$DIR_PATH"/*.sql >/dev/null 2>&1; then
-              echo "Saving README for SQL problem: $file"
-              continue
-            fi
-          fi
-
-          # Delete the file if it is NOT a SQL file
-          if [[ "$file" != *.sql && -f "$file" ]]; then
+          # 2. Clean Non-SQL files immediately
+          if [[ "$file" != *.sql && "$(basename "$file")" != "README.md" && -f "$file" ]]; then
             echo "Removing non-SQL file: $file"
             git rm -rf "$file"
-            NON_SQL_FOUND=true
+            CHANGES_MADE=true
+            continue
+          fi
+
+          # 3. Version LeetHub SQL files numerically (Solution_1, Solution_2...)
+          if [[ "$file" == *.sql && -f "$file" ]]; then
+            if [[ "$(basename "$file")" == "Solution.sql" ]]; then
+              DIR_PATH=$(dirname "$file")
+              
+              # Count existing versioned SQL files in this folder to determine the next number
+              COUNT=1
+              while [ -f "$DIR_PATH/Solution_$COUNT.sql" ]; do
+                COUNT=$((COUNT + 1))
+              done
+              
+              NEW_NAME="$DIR_PATH/Solution_$COUNT.sql"
+              
+              echo "Versioning file: $file -> $NEW_NAME"
+              mv "$file" "$NEW_NAME"
+              git rm "$file"
+              git add "$NEW_NAME"
+              CHANGES_MADE=true
+            fi
           fi
         done
 
-        # Clean up empty parent directories left behind by deleted non-SQL problems
-        if [ "$NON_SQL_FOUND" = true ]; then
-          find . -type d -empty -not -path "./.git*" -delete
-          
+        # Clean empty folders
+        find . -type d -empty -not -path "./.git*" -delete
+
+        # Push updates back if modifications were made
+        if [ "$CHANGES_MADE" = true ]; then
           git config --global user.name "SQL Filter Bot"
           git config --global user.email "bot@github.com"
-          
-          git commit -m "Auto-cleanup: Removed non-SQL files from submission"
+          git commit -m "Auto-cleanup: Processed and versioned SQL submission"
           git push origin HEAD:${{ github.ref }}
         else
-          echo "No action required. Repository is clean."
+          echo "No modifications needed."
         fi
