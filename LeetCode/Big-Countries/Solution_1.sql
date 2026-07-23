@@ -1,1 +1,3 @@
-    df = world[(world['area'] >= 3000000) | (world['population'] >= 25000000)]
+SELECT name,population,area
+FROM World 
+where area>=3000000 OR population>=25000000
