@@ -1,1 +1,4 @@
-select name from customer where referee_id != 2;
+# Write your MySQL query statement below
+SELECT name 
+FROM customer 
+WHERE COALESCE(referee_id, 0) <> 2
