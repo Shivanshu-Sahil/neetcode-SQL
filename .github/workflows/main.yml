@@ -14,7 +14,7 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0
+        fetch-depth: 0 # Pull full history to read previous versions cleanly
 
     - name: Process Submissions
       run: |
@@ -36,25 +36,35 @@ jobs:
             continue
           fi
 
-          # 3. Version LeetHub SQL files numerically (Solution_1, Solution_2...)
-          if [[ "$file" == *.sql && -f "$file" ]]; then
-            if [[ "$(basename "$file")" == "Solution.sql" ]]; then
-              DIR_PATH=$(dirname "$file")
-              
-              # Count existing versioned SQL files in this folder to determine the next number
-              COUNT=1
-              while [ -f "$DIR_PATH/Solution_$COUNT.sql" ]; do
-                COUNT=$((COUNT + 1))
-              done
-              
-              NEW_NAME="$DIR_PATH/Solution_$COUNT.sql"
-              
-              echo "Versioning file: $file -> $NEW_NAME"
-              mv "$file" "$NEW_NAME"
-              git rm "$file"
-              git add "$NEW_NAME"
-              CHANGES_MADE=true
-            fi
+          # 3. Handle LeetHub SQL files without losing history
+          if [[ "$(basename "$file")" == "Solution.sql" && -f "$file" ]]; then
+            DIR_PATH=$(dirname "$file")
+            
+            # Copy the new solution content to a safe temporary location
+            cp "$file" /tmp/new_solution_temp.sql
+            
+            # Revert the current change to see exactly what files were in this folder previously
+            git checkout HEAD~1 -- "$DIR_PATH" 2>/dev/null || true
+            
+            # Find the next sequential number that does not exist in the folder
+            COUNT=1
+            while [ -f "$DIR_PATH/Solution_$COUNT.sql" ]; do
+              COUNT=$((COUNT + 1))
+            done
+            
+            NEW_NAME="$DIR_PATH/Solution_$COUNT.sql"
+            echo "Saving new submission safely as: $NEW_NAME"
+            
+            # Re-checkout everything from the current commit to keep our baseline intact
+            git checkout HEAD -- "$DIR_PATH" 2>/dev/null || true
+            
+            # Move our temporary file into its brand new, unique slot
+            mv /tmp/new_solution_temp.sql "$NEW_NAME"
+            
+            # Tell Git to completely remove the generic 'Solution.sql' so it doesn't stay behind
+            git rm -f "$file" 2>/dev/null || true
+            git add "$NEW_NAME"
+            CHANGES_MADE=true
           fi
         done
 
