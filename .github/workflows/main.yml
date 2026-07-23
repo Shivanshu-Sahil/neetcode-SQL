@@ -1,0 +1,45 @@
+name: Filter SQL Submissions Only
+
+on:
+  push:
+    branches:
+      - main  # Change to your default branch name if it is 'master'
+
+jobs:
+  clean-repo:
+    runs-on: ubuntu-latest
+    # Prevent infinite loops when the action itself pushes a change
+    if: "!contains(github.event.head_commit.message, 'Auto-cleanup')"
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Remove Non-SQL Files from Latest Commit
+      run: |
+        # Identify files added or modified in the latest commit
+        FILES=$(git diff-tree --no-commit-id --name-only -r ${{ github.sha }})
+        NON_SQL_FOUND=false
+
+        for file in $FILES; do
+          # Check if the file is NOT a SQL file and NOT part of repository system files
+          if [[ "$file" != *.sql && "$file" != .github* && "$file" != "README.md" && -f "$file" ]]; then
+            echo "Removing non-SQL file: $file"
+            git rm "$file"
+            NON_SQL_FOUND=true
+          fi
+        done
+
+        if [ "$NON_SQL_FOUND" = true ]; then
+          # Configure a temporary git profile to commit the change
+          git config --global user.name "SQL Filter Bot"
+          git config --global user.email "bot@github.com"
+          
+          # Amend or add a cleanup commit
+          git commit -m "Auto-cleanup: Removed non-SQL files from submission"
+          git push origin HEAD:${{ github.ref }}
+        else
+          echo "No non-SQL files detected. Keeping commit clean."
+        fi
