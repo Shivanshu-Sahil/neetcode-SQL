@@ -1,5 +1,9 @@
-WHERE (
-a.start_date <= b.purchase_date 
-AND a.end_date >= b.purchase_date
- ) 
-OR b.purchase_date IS NULL
+SELECT p.product_id,
+ROUND(
+    IFNULL(SUM(p.price * u.units) / SUM(u.units), 0),2) 
+    AS average_price
+FROM Prices p
+LEFT JOIN UnitsSold u
+ON p.product_id = u.product_id
+AND u.purchase_date BETWEEN p.start_date AND p.end_date
+GROUP BY p.product_id;
